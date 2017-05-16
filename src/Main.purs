@@ -1,12 +1,14 @@
 module Main where
 
 import Prelude
-import Effect.Mraa
 import Control.Monad.Eff (Eff)
-import Control.Monad.Eff.Console (CONSOLE, log)
+-- import Control.Monad.Aff (delay)
 
-main :: forall e. Eff (console :: CONSOLE | e) Unit
+import Effect.Mraa (HWIO, Pin(..), dirOut, gpio, mraa, write)
+
+main :: forall e. Eff (hwio :: HWIO | e) Unit
 main = do
   let m = mraa
-  ledPin <- gpio m 44
+  ledPin <- gpio m $ Pin 44
   dirOut m ledPin
+  write ledPin 1
