@@ -1,16 +1,19 @@
 module Main where
 
-
 import Control.Coroutine as Co
-import Control.Coroutine (runProcess, ($$))
+import Control.Coroutine (producer, runProcess, ($$))
 import Control.Monad (class Monad)
 import Control.Monad.Aff (Aff, delay, launchAff)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Class (liftEff)
 import Control.Monad.Eff.Console (CONSOLE, logShow)
 import Control.Monad.Eff.Exception (EXCEPTION)
+import Control.Monad.Eff.Now (NOW, now)
 import Control.Monad.Rec.Class (forever)
 import Control.Monad.Trans.Class (lift)
+import Data.DateTime.Instant (Instant)
+import Data.Either (Either(..))
+import Data.Functor (mapFlipped)
 import Data.Int (floor, toNumber)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (wrap)
@@ -41,21 +44,15 @@ nats = go 0
   where
   go i = do
     Co.emit i
-    lift (delay (wrap 1000.0)) -- 10ms delay
+    lift (delay (wrap 1000.0)) -- 1s delay
     go (i + 1)
 
--- timeStream :: forall eff. Co.Producer Instant (Eff _) Instant
--- timeStream = producer $ now `mapFlipped` Right
+timeStream :: forall eff. Co.Producer Instant (Aff (now :: NOW | eff)) Unit
+timeStream = do
+  n <- lift (liftEff now)
+  Co.emit n 
+  timeStream
 
---rebind :: forall e a. Instant -> Run ( base :: FProxy (Eff( now :: NOW| a))| e) Unit
--- rebind n = liftBase now
-
--- forevs :: forall a e. Run ( base :: FProxy (Eff( now :: NOW| a))| e) Instant
--- forevs = forever $ liftBase ( now )
-
--- showN n = liftBase $ log "hi"
-
--- xxx :: forall a. Run (  a )
 
 
 onOff :: forall e. Gpio -> Int -> Eff (hwio :: HWIO, console :: CONSOLE| e) Unit
