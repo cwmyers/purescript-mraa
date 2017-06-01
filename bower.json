@@ -13,7 +13,8 @@
     "purescript-aff": "^3.1.0",
     "purescript-run-streaming": "^0.1.0",
     "purescript-now": "^3.0.0",
-    "purescript-coroutines": "^4.0.0"
+    "purescript-coroutines": "^4.0.0",
+    "purescript-maps": "^3.0.0"
   },
   "devDependencies": {
     "purescript-psci-support": "^3.0.0"
