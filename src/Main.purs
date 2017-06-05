@@ -3,59 +3,66 @@ module Main where
 import Control.Monad.Aff (Aff, delay, launchAff)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Class (liftEff)
-import Control.Monad.Eff.Console (CONSOLE)
+import Control.Monad.Eff.Console (CONSOLE, logShow)
 import Control.Monad.Eff.Exception (EXCEPTION)
-import Control.Monad.Eff.Now (NOW, now)
-import Data.DateTime.Instant (Instant, unInstant)
+import Control.Monad.Eff.Now (NOW)
+import Data.DateTime.Instant (Instant)
 import Data.Map (Map, fromFoldable, lookup)
 import Data.Maybe (fromMaybe)
 import Data.Time.Duration (Milliseconds(..))
 import Data.Tuple (Tuple(..))
-import Effect.FakeMraa (Gpio, HWIO, Pin(..), dirOut, gpio, mraa, write)
-import Prelude (Unit, bind, discard, pure, void, (#), ($), (+), (<<<), (>=))
-import Run (FProxy, Run, liftBase, runBase)
-import Run.Streaming (Producer)
-import Run.Streaming.Prelude (foldM, produce)
+import Effect.Mraa (BinValue(Low, High), Direction(..), Gpio, HWIO, Pin(Pin), dir, gpio, read, write)
+import Prelude (Unit, bind, discard, pure, void, (#), ($), (+), (>=))
+import Process (instantToNumber, runItAff, sleep)
+import Run (runBase)
+import Run.Streaming.Prelude (produce)
 
 type PinState = { pin :: Gpio, lastUpdate :: Number, state :: Int, nextUpdate :: Number}
 type World = { pinState :: PinState }
 
-type TransitionState = { nextState :: Int, pinState :: Int, delay :: Number }
+type TransitionState = { nextState :: Int, pinState :: BinValue, delay :: Number }
 
 defaultState :: TransitionState
-defaultState = { nextState : 0, pinState : 0, delay : 1000.0}
+defaultState = { nextState : 0, pinState : Low, delay : 1000.0}
 
 states :: Map Int TransitionState
 states = fromFoldable [
-  Tuple 0 { nextState : 1, pinState : 1, delay : 10.0},
-  Tuple 1 { nextState : 2, pinState : 0, delay : 10.0},
-  Tuple 2 { nextState : 3, pinState : 1, delay : 10.0},
-  Tuple 3 { nextState : 0, pinState : 0, delay : 10.0}
+  Tuple 0 { nextState : 1, pinState : High, delay : 10.0},
+  Tuple 1 { nextState : 2, pinState : Low, delay : 10.0},
+  Tuple 2 { nextState : 3, pinState : High, delay : 10.0},
+  Tuple 3 { nextState : 0, pinState : Low, delay : 10.0}
   ]
 
 main :: forall e. Eff (now :: NOW, hwio :: HWIO, exception :: EXCEPTION, console :: CONSOLE | e) Unit
 main = do
-  let m = mraa
-  ledPin <- gpio m $ Pin 44
-  dirOut m ledPin
-  let timeStream = produce $ sleep
+  ledPin <- gpio $ Pin 44
+  ledPin2 <- gpio $ Pin 45
+  dir ledPin Out
+  dir ledPin2 In
+  v <- read ledPin2
+  logShow v
+  let timeStream = produce $ sleep 0.0
   let world = { pinState : {pin : ledPin, lastUpdate : 0.0 , state : 0, nextUpdate: 0.0}}
-  timeStream # (runIt $ world) # runBase # launchAff # void
+  timeStream # runItAff world myProj # runBase # launchAff # void
 
-type MyAff r = Aff( console :: CONSOLE, hwio :: HWIO | r)
 
-type MyBase a r = ( base :: FProxy a | r )
+myProj :: forall eff.
+  World
+  -> Instant
+     -> Aff ( console :: CONSOLE, hwio :: HWIO | eff) World
+myProj w i = do
+  world <- onOff w i
+  liftEff $ process world i
 
-runIt :: forall a r. World -> Run ( Producer Instant ( MyBase (MyAff a) r)) Unit
-     -> Run ( MyBase (MyAff a) r ) World
-runIt world = foldM (\w i -> liftBase $ liftEff $ process w i) (pure world) pure
+onOff :: forall eff.
+  World -> Instant -> Aff (console:: CONSOLE, hwio :: HWIO | eff) World
+onOff world instant = do
+  liftEff $ write world.pinState.pin High
+  delay $ Milliseconds 1000.0
+  liftEff $ write world.pinState.pin Low
+  delay $ Milliseconds 1000.0
+  pure world
 
-sleep :: forall a b.
-  Run ( MyBase (Aff ( now :: NOW  | b )) a ) Instant
-sleep = do
-  time <- liftBase $ liftEff now
-  liftBase $ delay $ Milliseconds 10.0
-  pure time
 
 process :: forall eff.
   World ->
@@ -72,9 +79,3 @@ process world instant = if currentTime >= world.pinState.nextUpdate
     pure world
   where
     currentTime = instantToNumber instant
-
-instantToNumber :: Instant -> Number
-instantToNumber = fromMilli <<< unInstant
-
-fromMilli :: Milliseconds -> Number
-fromMilli (Milliseconds m) = m
